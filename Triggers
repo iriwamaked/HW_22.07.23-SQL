@@ -1,0 +1,517 @@
+/*1. Чтобы при взятии определенной книги, ее количество уменьшалось на 1, а сам факт выдачи фиксировался 
+в таблице Issued (в нее нужно записывать фамилию и имя студента/преподавателя, название книги, дату выдачи)*/
+CREATE TABLE Issued 
+( id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+  name nvarchar(50) CHECK (name <>'') NOT NULL,
+  surname nvarchar (50) CHECK(surname<>'') NOT NULL,
+  BookName nvarchar(500) CHECK (BookName <>'') NOT NULL,
+  DateOut nvarchar(50))
+
+ALTER TRIGGER BookOut ON S_Cards
+FOR INSERT
+AS 
+BEGIN
+	INSERT INTO Issued (name, surname, BookName, DateOut)
+	SELECT Student.first_name, Student.last_name, Book.Name, S_Cards.date_out
+		FROM Student
+	JOIN S_Cards ON Student.Id=S_Cards.id_student
+	JOIN Book ON S_Cards.id=Book.id
+	WHERE S_Cards.id IN (SELECT id FROM Inserted)
+
+	UPDATE Book
+	SET quantity=quantity-1
+	FROM Book
+	JOIN Inserted ON Book.id=Inserted.id_book
+
+	SELECT * FROM Inserted
+END
+
+SELECT * FROM Student
+
+INSERT INTO S_cards (id_student, id_book, date_out, id_librarian)
+VALUES (9,8, '21-07-23', 1)
+
+SELECT * FROM Issued
+DROP TABLE Issued
+
+CREATE TRIGGER BookOutTeacher ON T_Cards
+FOR INSERT
+AS 
+BEGIN
+	INSERT INTO Issued (name, surname, BookName, DateOut)
+	SELECT Teacher.first_name, Teacher.last_name, Book.Name, T_Cards.date_out
+		FROM Teacher
+	JOIN T_Cards ON Teacher.Id=T_Cards.id_teacher
+	JOIN Book ON T_Cards.id=Book.id
+	WHERE T_Cards.id IN (SELECT id FROM Inserted)
+
+	UPDATE Book
+	SET quantity=quantity-1
+	FROM Book
+	JOIN Inserted ON Book.id=Inserted.id_book
+
+	SELECT * FROM Inserted
+END
+
+INSERT INTO T_Cards (id_teacher, id_book, date_out, id_librarian)
+VALUES (1,9, '05-05-23', 1)
+
+SELECT * FROM Issued
+
+/*2. - Сделать так, чтобы нельзя было выдать книгу, которой уже нет в библиотеке*/
+ALTER TRIGGER NoBook_T_Cards
+ON T_Cards
+FOR INSERT
+AS 
+BEGIN
+    IF EXISTS (SELECT * FROM inserted AS I
+               JOIN Book AS B ON I.id_book = B.id
+               WHERE B.quantity <= 0)
+    BEGIN
+		PRINT ('Книга не может быть выдана, поскольку ее нет!')
+		DELETE FROM T_Cards
+		 WHERE id IN (
+		 SELECT i.id
+		 FROM inserted i
+		 JOIN Book b ON i.id_book = b.id
+		 WHERE b.quantity <= 0
+		)
+
+		UPDATE Book
+		SET quantity = 0
+		WHERE id IN (
+		 SELECT i.id_book
+		 FROM inserted i
+		 JOIN Book b ON i.id_book = b.id
+		WHERE b.quantity <= 0
+)
+	END
+END
+
+ALTER TRIGGER NoBook_S_Cards
+ON S_Cards
+FOR INSERT
+AS 
+BEGIN
+    IF EXISTS (SELECT * FROM inserted AS I
+               JOIN Book AS B ON I.id_book = B.id
+               WHERE B.quantity <= 0)
+    BEGIN
+        DELETE FROM S_Cards
+		WHERE id IN (
+        SELECT i.id
+        FROM inserted i
+        JOIN Book b ON i.id_book = b.id
+        WHERE b.quantity <= 0)
+
+		UPDATE Book SET quantity=0 WHERE id IN (
+        SELECT i.id
+        FROM inserted i
+        JOIN Book b ON i.id_book = b.id
+        WHERE b.quantity <= 0)
+    
+    END
+END
+
+SELECT * FROM Book
+SELECT * FROM T_cards
+INSERT INTO T_Cards (id_teacher, id_book, date_out, id_librarian)
+VALUES (1,5, '2023-05-03', 1)
+
+/*3- Чтобы при возврате 1 книги, ее количество увеличивалось на 1 и это фиксировалось в таблице Returned*/
+CREATE TABLE Returned
+( id int IDENTITY(1,1) NOT NULL PRIMARY KEY,
+  name nvarchar(50) CHECK (name <>'') NOT NULL,
+  surname nvarchar (50) CHECK(surname<>'') NOT NULL,
+  BookName nvarchar(500) CHECK (BookName <>'') NOT NULL,
+  DateIn nvarchar(50))
+
+CREATE TRIGGER BookReturned_S_Cards
+ON S_Cards
+FOR UPDATE
+AS
+	BEGIN
+	IF UPDATE(date_in)
+		INSERT INTO Returned (name, surname, BookName, DateIn)
+		SELECT s.first_name, s.last_name, Book.name, GETDATE()
+		FROM Student s
+		JOIN S_Cards On s.id=S_cards.id_student
+		JOIN Book ON S_Cards.id = Book.id
+		JOIN Inserted ON S_Cards.Id=inserted.id
+		WHERE inserted.date_in IS NOT NULL
+
+		UPDATE Book
+		SET quantity=quantity+1
+		FROM Book
+		JOIN inserted ON Book.id=inserted.id_book
+		WHERE inserted.date_in IS NOT NULL
+	END
+
+SELECT * FROM S_Cards
+
+DECLARE @date_in nvarchar (50) = '2023-08-12'
+
+UPDATE S_Cards 
+SET date_in=@date_in
+WHERE ID = 18
+
+UPDATE Book SET quantity=5 WHERE id=1
+
+SELECT * FROM Book
+
+CREATE TRIGGER BookReturned_T_Cards
+ON T_Cards
+FOR UPDATE
+AS
+	BEGIN
+	IF UPDATE(date_in)
+		INSERT INTO Returned (name, surname, BookName, DateIn)
+		SELECT t.first_name, t.last_name, Book.name, GETDATE()
+		FROM Teacher t
+		JOIN T_Cards On t.id=t_cards.id_teacher
+		JOIN Book ON T_Cards.id = Book.id
+		JOIN Inserted ON T_Cards.Id=inserted.id
+		WHERE inserted.date_in IS NOT NULL
+
+		UPDATE Book
+		SET quantity=quantity+1
+		FROM Book
+		JOIN inserted ON Book.id=inserted.id_book
+		WHERE inserted.date_in IS NOT NULL
+	END
+
+
+/*4-Сделать так, чтобы нельзя было вернуть больше книг, чем их было изначально*/
+SElECT* FROM Book
+
+SELECT * FROM Issued
+SELECT * FROM Returned
+
+--обновила триггеры, чтобы при возврате книг удалялась запись о выданной книге из таблицы Issued
+
+ALTER TRIGGER BookReturned_S_Cards
+ON S_Cards
+FOR UPDATE
+AS
+	BEGIN
+	IF UPDATE(date_in)
+		INSERT INTO Returned (name, surname, BookName, DateIn)
+		SELECT s.first_name, s.last_name, Book.name, GETDATE()
+		FROM Student s
+		JOIN S_Cards On s.id=S_cards.id_student
+		JOIN Book ON S_Cards.id = Book.id
+		JOIN Inserted ON S_Cards.Id=inserted.id
+		WHERE inserted.date_in IS NOT NULL
+
+		UPDATE Book
+		SET quantity=quantity+1
+		FROM Book
+		JOIN inserted ON Book.id=inserted.id_book
+		WHERE inserted.date_in IS NOT NULL
+
+		DELETE 
+        FROM Issued 
+        WHERE EXISTS (
+            SELECT 1
+            FROM inserted i
+            JOIN deleted d ON i.id = d.id
+            JOIN Book b ON i.id_book = b.id
+			JOIN Student ON i.id_student=Student.id
+            WHERE i.date_in IS NOT NULL AND
+                  Issued.name = student.first_name AND
+                  Issued.surname = student.last_name AND
+                  Issued.BookName = b.name 
+        )
+	END
+
+ALTER TRIGGER BookReturned_T_Cards
+ON T_Cards
+FOR UPDATE
+AS
+	BEGIN
+	IF UPDATE(date_in)
+		INSERT INTO Returned (name, surname, BookName, DateIn)
+		SELECT t.first_name, t.last_name, Book.name, GETDATE()
+		FROM Teacher t
+		JOIN T_Cards On t.id=t_cards.id_teacher
+		JOIN Book ON T_Cards.id = Book.id
+		JOIN Inserted ON T_Cards.Id=inserted.id
+		WHERE inserted.date_in IS NOT NULL
+
+		UPDATE Book
+		SET quantity=quantity+1
+		FROM Book
+		JOIN inserted ON Book.id=inserted.id_book
+		WHERE inserted.date_in IS NOT NULL
+
+		DELETE 
+        FROM Issued 
+        WHERE EXISTS (
+            SELECT 1
+            FROM inserted i
+            JOIN deleted d ON i.id = d.id
+            JOIN Book b ON i.id_book = b.id
+			JOIN Teacher ON i.id_teacher=Teacher.id
+            WHERE i.date_in IS NOT NULL AND
+                  Issued.name = Teacher.first_name AND
+                  Issued.surname = Teacher.last_name AND
+                  Issued.BookName = b.name 
+        )
+	END
+
+-- cоздаем триггер, который проверяет соответствие выданных книг возвращенным
+CREATE TRIGGER NoReturnMore
+ON Returned
+FOR INSERT
+AS
+BEGIN
+	IF NOT EXISTS (SELECT I.id, I.BookName, I.Surname
+		FROM inserted I
+		JOIN Issued ON I.BookName = Issued.BookName AND I.Name=Issued.name 
+		AND I.surname = Issued.surname 
+    )
+    BEGIN
+		PRINT ('Нельзя вернуть больше книг, чем было')
+		ROLLBACK TRAN
+	END
+	ELSE
+    BEGIN
+        DECLARE @IssuedCount int, @ReturnedCount int;
+
+        SELECT @IssuedCount = COUNT(*)
+        FROM Issued I
+        WHERE EXISTS (
+            SELECT 1
+            FROM inserted RI
+            WHERE RI.BookName = I.BookName AND RI.Name = I.name 
+                AND RI.surname = I.surname
+        );
+
+        SELECT @ReturnedCount = COUNT(*)
+        FROM Returned R
+        WHERE EXISTS (
+            SELECT 1
+            FROM inserted RI
+            WHERE RI.BookName = R.BookName AND RI.Name = R.name 
+                AND RI.surname = R.surname
+        );
+
+        IF @ReturnedCount > @IssuedCount
+        BEGIN
+            PRINT ('Нельзя вернуть больше книг, чем было выдано')
+            ROLLBACK TRAN
+        END
+    END
+END
+
+
+/*
+Можно еще добавить дополнительное поле с общим количеством книг и делать проверки по этому полю,
+но из условий задания выходит, что нужно использовать созданные ранее таблицы для проверки в целом, а не по каждой конретной книге
+ALTER TABLE Book ADD total_quantity int 
+
+DECLARE @rowCount int = (SELECT COUNT(*) FROM Book)
+DECLARE @count int = 1
+WHILE (@count<=@rowCount)
+	BEGIN
+		UPDATE Book SET total_quantity = 10 WHERE id = @count
+		SET @count=@count+1
+	END */
+
+/*5 - Чтобы нельзя было выдать больше 3-х книг одному студенту*/
+SELECT * FROM Issued
+
+ALTER TRIGGER BookOut ON S_Cards
+FOR INSERT
+AS 
+BEGIN
+	INSERT INTO Issued (name, surname, BookName, DateOut)
+	SELECT Student.first_name, Student.last_name, Book.Name, S_Cards.date_out
+		FROM Student
+	JOIN S_Cards ON Student.Id=S_Cards.id_student
+	JOIN Book ON S_Cards.id=Book.id
+	WHERE S_Cards.id IN (SELECT id FROM Inserted)
+
+	UPDATE Book
+	SET quantity=quantity-1
+	FROM Book
+	JOIN Inserted ON Book.id=Inserted.id_book
+
+	DECLARE @StudentId INT;
+    DECLARE @BookCount INT;
+
+    SELECT @StudentId = id_student
+    FROM inserted;
+
+    SELECT @BookCount = COUNT(*)
+    FROM Issued
+    WHERE name = (SELECT first_name FROM Student WHERE id = @StudentId)
+      AND surname = (SELECT last_name FROM Student WHERE id = @StudentId)
+
+    IF @BookCount > 3
+    BEGIN
+        PRINT ('Нельзя выдать больше 3-х книг одному студенту.')
+		ROLLBACK TRANSACTION;
+    END;
+
+	SELECT * FROM Inserted
+END
+
+ALTER TRIGGER BookOutTeacher ON T_Cards
+FOR INSERT
+AS 
+BEGIN
+	INSERT INTO Issued (name, surname, BookName, DateOut)
+	SELECT Teacher.first_name, Teacher.last_name, Book.Name, T_Cards.date_out
+		FROM Teacher
+	JOIN T_Cards ON Teacher.Id=T_Cards.id_teacher
+	JOIN Book ON T_Cards.id=Book.id
+	WHERE T_Cards.id IN (SELECT id FROM Inserted)
+
+	UPDATE Book
+	SET quantity=quantity-1
+	FROM Book
+	JOIN Inserted ON Book.id=Inserted.id_book
+
+	DECLARE @TeacherId INT;
+    DECLARE @BookCount INT;
+
+    SELECT @TeacherId = id_teacher
+    FROM inserted;
+
+    SELECT @BookCount = COUNT(*)
+    FROM Issued
+    WHERE name = (SELECT first_name FROM Teacher WHERE id = @TeacherId)
+      AND surname = (SELECT last_name FROM Teacher WHERE id = @TeacherId)
+
+    IF @BookCount > 3
+    BEGIN
+        PRINT ('Нельзя выдать больше 3-х книг одному студенту.')
+		ROLLBACK TRANSACTION;
+    END;
+
+	SELECT * FROM Inserted
+END
+
+/*6. Чтобы при удалении книги, данные о ней копировались в таблицу LibDeleted*/
+CREATE TABLE LibDeleted
+(	name nvarchar (100),
+	pages int,
+	year_press int,
+	id_theme int,
+	id_category int,
+	id_autor int,
+	id_publishment int,
+	comment nvarchar (50),
+	quantity int)
+
+CREATE TRIGGER BookDeleted
+ON Book
+FOR DELETE AS
+	INSERT INTO LibDeleted (name, pages, year_press, id_theme, id_category, id_autor, id_publishment, comment, quantity)
+	SELECT name, pages, year_press, id_theme, id_category, id_author, id_publishment, comment, quantity
+	FROM deleted
+
+/*7-Нельзя выдать новую книгу студенту, который в прошлый раз он книгу читал больше 2 месяцев*/
+CREATE TRIGGER NoMoreThan2Months
+ON S_Cards
+FOR INSERT
+AS
+BEGIN
+    DECLARE @StudentId int;
+    DECLARE @BookCount int;
+
+    SELECT @StudentId = id_student
+    FROM inserted
+
+    SELECT @BookCount = COUNT(*)
+    FROM S_cards
+	JOIN Student ON Student.id = S_Cards.id_student
+    WHERE DATEDIFF(MONTH, date_out, date_in) >= 2;
+
+    IF @BookCount > 3
+    BEGIN
+        PRINT ('Нельзя выдать больше 3-х книг одному студенту за 2 месяца.')
+        ROLLBACK TRANSACTION;
+    END;
+END;
+
+/*9-Если студента зовут Александр, он получает две одинковые книги вместо одной, если второй экземпляр в наличии*/
+SELECT * FROM Student
+
+CREATE TRIGGER AlexStudent
+ON S_Cards
+FOR INSERT
+AS
+BEGIN
+    DECLARE @StudentName nvarchar(50);
+    DECLARE @BookId int;
+    DECLARE @AvailableCount int;
+
+    SELECT @StudentName = s.first_name
+    FROM Student s
+    JOIN inserted i ON s.id = i.id_student;
+
+    SELECT @BookId = i.id_book
+    FROM inserted i;
+
+    IF @StudentName = 'Александр'
+    BEGIN
+        SELECT @AvailableCount = quantity
+        FROM Book
+        WHERE id = @BookId;
+
+        IF @AvailableCount >= 2
+        BEGIN
+            INSERT INTO S_Cards (id_student, id_book, date_out, id_librarian, date_in)
+            SELECT i.id_student, i.id_book, i.date_out, i.id_librarian, i.date_in
+            FROM inserted i;
+
+            UPDATE Book
+            SET quantity = quantity - 2
+            WHERE id = @BookId;
+        END;
+    END;
+END;
+
+/*10-Если нет книги, которую хочет преподаватель, выдать ему случайную книгу. В случае, если в библиотеки закончились книги - выдать сообщение*/
+
+CREATE TRIGGER ProvideBookToTeacher
+ON T_Cards
+FOR INSERT
+AS
+BEGIN
+    DECLARE @TeacherId INT, @RequestedBookId INT, @RandomBookId INT;
+
+    SELECT @TeacherId = id_teacher, @RequestedBookId = id_book
+    FROM inserted;
+
+    IF NOT EXISTS (SELECT 1 FROM Book WHERE id = @RequestedBookId)
+    BEGIN
+        SELECT TOP 1 @RandomBookId = id
+        FROM Book
+        WHERE quantity > 0
+        ORDER BY RAND();
+
+        IF @RandomBookId IS NOT NULL
+        BEGIN
+            INSERT INTO T_Cards (id_teacher, id_book, date_out, id_librarian)
+            VALUES (@TeacherId, @RandomBookId, GETDATE(), 1);
+
+            UPDATE Book
+            SET quantity = quantity - 1
+            WHERE id = @RandomBookId
+        END
+        ELSE
+        BEGIN
+            PRINT 'В библиотеке закончились книги'
+            ROLLBACK TRANSACTION
+        END;
+    END;
+    ELSE
+    BEGIN
+        UPDATE Book
+        SET quantity = quantity - 1
+        WHERE id = @RequestedBookId
+    END;
+END;
